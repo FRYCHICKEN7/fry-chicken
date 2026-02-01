@@ -220,6 +220,72 @@ export const firebaseService = {
       });
     },
 
+    getAvailableForDeliveryMultipleBranches: (branchIds: string[], callback: (orders: Order[]) => void) => {
+      console.log('🔥 Listening to available orders for delivery in branches:', branchIds);
+      
+      if (branchIds.length === 0) {
+        console.log('⚠️ No branch IDs provided, returning empty orders');
+        callback([]);
+        return () => {};
+      }
+
+      const unsubscribers: (() => void)[] = [];
+      const ordersMap = new Map<string, Order>();
+
+      const updateOrders = () => {
+        const allOrders = Array.from(ordersMap.values());
+        console.log('📦 Combined available orders from all branches:', allOrders.length);
+        callback(allOrders);
+      };
+
+      branchIds.forEach((branchId) => {
+        const q = query(
+          collection(db, 'orders'),
+          where('branchId', '==', branchId),
+          orderBy('createdAt', 'desc')
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            const data = change.doc.data();
+            const orderId = change.doc.id;
+            const orderBranchId = data.branchId;
+
+            if (change.type === 'removed') {
+              ordersMap.delete(orderId);
+            } else {
+              const isAvailable = !data.deliveryId && 
+                                !data.deliveryRequestedBy &&
+                                ['pending', 'preparing', 'ready'].includes(data.status) &&
+                                data.deliveryType === 'delivery';
+              
+              if (isAvailable) {
+                ordersMap.set(orderId, {
+                  ...data,
+                  id: orderId,
+                  createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+                  updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
+                } as Order);
+              } else {
+                ordersMap.delete(orderId);
+              }
+            }
+          });
+          console.log(`📦 [Branch: ${branchId}] Updated orders in map:`, ordersMap.size);
+          updateOrders();
+        }, (error) => {
+          console.error(`❌ Error listening to orders for branch ${branchId}:`, error.code);
+        });
+
+        unsubscribers.push(unsubscribe);
+      });
+
+      return () => {
+        console.log('🔥 Cleaning up multiple branch listeners');
+        unsubscribers.forEach(unsub => unsub());
+      };
+    },
+
     deleteAll: async (): Promise<number> => {
       console.log('🔥 [DELETE ALL ORDERS] Starting deletion of all orders from Firebase...');
       try {
@@ -395,6 +461,22 @@ export const firebaseService = {
         console.error('❌ Error listening to delivery users:', error.code);
         callback([]);
       });
+    },
+
+    getAllSnapshot: async (): Promise<DeliveryUser[]> => {
+      console.log('🔥 Getting all delivery users snapshot');
+      const snapshot = await getDocs(collection(db, 'deliveryUsers'));
+      const users: DeliveryUser[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        users.push({
+          ...data,
+          id: doc.id,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        } as DeliveryUser);
+      });
+      console.log('🚚 Delivery users snapshot retrieved:', users.length);
+      return users;
     },
 
     getByBranch: (branchId: string, callback: (users: DeliveryUser[]) => void) => {
