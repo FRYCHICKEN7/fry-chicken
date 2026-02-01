@@ -67,29 +67,29 @@ export default function DeliveryOrdersScreen() {
   
   const allMyOrders = orders.filter((o) => {
     const isMyBranch = o.branchId === user?.branchId;
-    const isDeliveryType = o.deliveryType === "delivery";
-    const isAvailable = !o.deliveryId && (o.status === "pending" || o.status === "preparing" || o.status === "ready");
     const isAssignedToMe = o.deliveryId === user?.id;
     const isRequestedByMe = o.deliveryRequestedBy === user?.id;
     
-    return (isMyBranch && isDeliveryType && isAvailable) || isAssignedToMe || isRequestedByMe;
+    return isMyBranch || isAssignedToMe || isRequestedByMe;
   });
   
   console.log('✅ [DELIVERY ORDERS] Filtered orders for delivery:', {
     totalOrders: orders.length,
     myBranchOrders: orders.filter(o => o.branchId === user?.branchId).length,
-    availableOrders: orders.filter(o => o.branchId === user?.branchId && o.deliveryType === "delivery" && !o.deliveryId).length,
     assignedToMe: orders.filter(o => o.deliveryId === user?.id).length,
     requestedByMe: orders.filter(o => o.deliveryRequestedBy === user?.id).length,
-    finalFiltered: allMyOrders.length
+    finalFiltered: allMyOrders.length,
+    userBranchId: user?.branchId
   });
   
-  console.log('📋 [DELIVERY ORDERS] Available orders:', allMyOrders.map(o => ({
+  console.log('📋 [DELIVERY ORDERS] All filtered orders:', allMyOrders.map(o => ({
     orderNumber: o.orderNumber,
     status: o.status,
     branchId: o.branchId,
     deliveryId: o.deliveryId,
-    deliveryType: o.deliveryType
+    deliveryType: o.deliveryType,
+    adminApproved: o.adminApproved,
+    paymentMethod: o.paymentMethod
   })));
 
   const filteredOrders = sortOrdersByPriorityAndTime(
@@ -97,7 +97,8 @@ export default function DeliveryOrdersScreen() {
       if (filter === "all") return true;
       
       if (filter === "ready") {
-        return (order.status === "pending" || order.status === "preparing" || order.status === "ready") && !order.deliveryId;
+        return !order.deliveryId && !order.deliveryRequestedBy && 
+               (order.status === "pending" || order.status === "preparing" || order.status === "ready");
       }
       
       if (filter === "dispatched") {
