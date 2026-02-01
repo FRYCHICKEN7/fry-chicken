@@ -432,6 +432,8 @@ export const [DataProviderInner, useData] = createContextHook(() => {
         
         let assignedOrders: Order[] = [];
         let availableOrders: Order[] = [];
+        let myAllowedBranchIds: string[] = [];
+        let availableOrdersUnsubscribe: (() => void) | null = null;
 
         const combineAndSetOrders = () => {
           const combined = [...assignedOrders, ...availableOrders];
@@ -453,42 +455,53 @@ export const [DataProviderInner, useData] = createContextHook(() => {
           combineAndSetOrders();
         }));
 
-        const loadDeliveryUsersAndListenToOrders = async () => {
-          console.log('🔍 [FIREBASE] Loading all delivery users to find branches for DNI...');
+        unsubscribers.push(firebaseService.deliveryUsers.getAll((firebaseDeliveryUsers) => {
+          console.log('🔥 [FIREBASE] Delivery users updated in real-time:', firebaseDeliveryUsers.length);
+          setDeliveryUsers(firebaseDeliveryUsers);
+          AsyncStorage.setItem(DELIVERY_USERS_KEY, JSON.stringify(firebaseDeliveryUsers));
           
-          const allDeliveryUsersSnapshot = await firebaseService.deliveryUsers.getAllSnapshot();
-          console.log('📋 [FIREBASE] All delivery users loaded:', allDeliveryUsersSnapshot.length);
-          
-          const myDeliveryProfile = allDeliveryUsersSnapshot.find(d => 
+          const myDeliveryProfile = firebaseDeliveryUsers.find(d => 
             (d.email && user?.email && d.email.toLowerCase() === user.email.toLowerCase()) ||
             (d.id === user?.id)
           );
           
           const myDNI = myDeliveryProfile?.dni;
-          console.log('🆔 [FIREBASE] My DNI:', myDNI);
+          console.log('🆔 [FIREBASE] My DNI (real-time update):', myDNI);
           
-          if (myDNI) {
-            const myAllowedBranchIds = allDeliveryUsersSnapshot
-              .filter(d => d.dni === myDNI && d.status === 'approved')
-              .map(d => d.branchId);
+          const newAllowedBranchIds = myDNI 
+            ? firebaseDeliveryUsers
+                .filter(d => d.dni === myDNI && d.status === 'approved')
+                .map(d => d.branchId)
+            : [];
+          
+          console.log('🏢 [FIREBASE] My allowed branch IDs:', newAllowedBranchIds);
+          
+          const branchIdsChanged = JSON.stringify(myAllowedBranchIds.sort()) !== JSON.stringify(newAllowedBranchIds.sort());
+          
+          if (branchIdsChanged) {
+            console.log('🔄 [FIREBASE] Branch IDs changed, updating listeners');
+            myAllowedBranchIds = newAllowedBranchIds;
             
-            console.log('🏢 [FIREBASE] My allowed branch IDs for listening:', myAllowedBranchIds);
+            if (availableOrdersUnsubscribe) {
+              console.log('🧹 [FIREBASE] Cleaning up old available orders listener');
+              availableOrdersUnsubscribe();
+              availableOrdersUnsubscribe = null;
+            }
             
             if (myAllowedBranchIds.length > 0) {
-              unsubscribers.push(firebaseService.orders.getAvailableForDeliveryMultipleBranches(myAllowedBranchIds, (firebaseAvailableOrders) => {
+              availableOrdersUnsubscribe = firebaseService.orders.getAvailableForDeliveryMultipleBranches(myAllowedBranchIds, (firebaseAvailableOrders) => {
                 console.log('🔥 [FIREBASE] Available orders from multiple branches updated:', firebaseAvailableOrders.length);
                 availableOrders = firebaseAvailableOrders;
                 combineAndSetOrders();
-              }));
+              });
+              unsubscribers.push(availableOrdersUnsubscribe);
             } else {
               console.log('⚠️ [FIREBASE] No approved branches found for DNI:', myDNI);
+              availableOrders = [];
+              combineAndSetOrders();
             }
-          } else {
-            console.log('⚠️ [FIREBASE] No DNI found for delivery user');
           }
-        };
-        
-        loadDeliveryUsersAndListenToOrders();
+        }));
 
         syncBranchesFromFirebase(false);
       } else if (user?.role === 'customer') {
