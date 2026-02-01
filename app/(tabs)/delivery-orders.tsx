@@ -41,7 +41,7 @@ type FilterStatus = "all" | "ready" | "dispatched" | "delivered" | "rejected";
 
 export default function DeliveryOrdersScreen() {
   const { colors } = useTheme();
-  const { orders, updateOrderStatus, addOrderDelay, addBranchNotification, earnPointsFromOrder, requestOrderClaim } = useData();
+  const { orders, updateOrderStatus, addOrderDelay, addBranchNotification, earnPointsFromOrder, requestOrderClaim, deliveryUsers } = useData();
   const { user } = useAuth();
   const [filter, setFilter] = useState<FilterStatus>("ready");
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -60,27 +60,54 @@ export default function DeliveryOrdersScreen() {
     userId: user?.id,
     role: user?.role,
     name: user?.name,
+    email: user?.email,
     branchId: user?.branchId
   });
   
   console.log('📦 [DELIVERY ORDERS] Total orders in system:', orders.length);
   
+  const myDeliveryProfile = deliveryUsers.find(d => 
+    (d.email && user?.email && d.email.toLowerCase() === user.email.toLowerCase()) ||
+    (d.id === user?.id)
+  );
+  
+  const myDNI = myDeliveryProfile?.dni;
+  console.log('🆔 [DELIVERY ORDERS] My delivery profile:', {
+    found: !!myDeliveryProfile,
+    dni: myDNI,
+    branchId: myDeliveryProfile?.branchId
+  });
+  
+  const myAllowedBranchIds = myDNI 
+    ? deliveryUsers
+        .filter(d => d.dni === myDNI && d.status === 'approved')
+        .map(d => d.branchId)
+    : [];
+  
+  console.log('🏢 [DELIVERY ORDERS] My allowed branch IDs:', myAllowedBranchIds);
+  
   const allMyOrders = orders.filter((o) => {
     const isAssignedToMe = o.deliveryId === user?.id;
     const isRequestedByMe = o.deliveryRequestedBy === user?.id;
     const isAvailableToClaim = !o.deliveryId && !o.deliveryRequestedBy && 
-      (o.status === "pending" || o.status === "preparing" || o.status === "ready");
+      (o.status === "pending" || o.status === "preparing" || o.status === "ready") &&
+      myAllowedBranchIds.includes(o.branchId);
     
     return isAssignedToMe || isRequestedByMe || isAvailableToClaim;
   });
   
   console.log('✅ [DELIVERY ORDERS] Filtered orders for delivery:', {
     totalOrders: orders.length,
-    myBranchOrders: orders.filter(o => o.branchId === user?.branchId).length,
+    myDNI: myDNI,
+    myAllowedBranches: myAllowedBranchIds,
     assignedToMe: orders.filter(o => o.deliveryId === user?.id).length,
     requestedByMe: orders.filter(o => o.deliveryRequestedBy === user?.id).length,
-    finalFiltered: allMyOrders.length,
-    userBranchId: user?.branchId
+    availableInMyBranches: orders.filter(o => 
+      !o.deliveryId && !o.deliveryRequestedBy && 
+      (o.status === "pending" || o.status === "preparing" || o.status === "ready") &&
+      myAllowedBranchIds.includes(o.branchId)
+    ).length,
+    finalFiltered: allMyOrders.length
   });
   
   console.log('📋 [DELIVERY ORDERS] All filtered orders:', allMyOrders.map(o => ({
