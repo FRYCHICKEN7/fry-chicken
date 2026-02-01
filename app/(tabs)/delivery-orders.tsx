@@ -85,7 +85,7 @@ export default function DeliveryOrdersScreen() {
       deliveryId: o.deliveryId,
     });
     
-    if (isMyBranch && (o.status === "pending" || o.status === "preparing") && o.deliveryType === "delivery" && !o.deliveryId) {
+    if (isMyBranch && o.deliveryType === "delivery" && !o.deliveryId && (o.status === "pending" || o.status === "preparing")) {
       return true;
     }
     
@@ -99,6 +99,8 @@ export default function DeliveryOrdersScreen() {
 
   const filteredOrders = sortOrdersByPriorityAndTime(
     allMyOrders.filter((order) => {
+      console.log('🎯 [FILTER] Applying filter:', filter, 'to order:', order.orderNumber);
+      
       if (filter === "all") return true;
       
       if (filter === "ready") {
@@ -120,6 +122,8 @@ export default function DeliveryOrdersScreen() {
       return false;
     })
   );
+  
+  console.log('✅ [DELIVERY ORDERS] Filtered orders for display:', filteredOrders.length);
 
   const myActiveOrders = orders.filter(
     (o) => o.deliveryId === user?.id && o.status === "dispatched"
