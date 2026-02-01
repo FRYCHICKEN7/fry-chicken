@@ -138,6 +138,8 @@ export const [ThemeProvider, useTheme] = createContextHook(() => {
         whatsapp: themeSettings?.whatsappButtonColor || darkColors.whatsapp,
         addToCartButton: themeSettings?.addToCartButtonColor || darkColors.addToCartButton,
         addToCartText: '#000000',
+        textPrimary: '#FFFFFF',
+        textSecondary: '#B0B0B0',
       }
     : {
         ...baseColors,
