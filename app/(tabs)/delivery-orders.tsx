@@ -66,11 +66,12 @@ export default function DeliveryOrdersScreen() {
   console.log('📦 [DELIVERY ORDERS] Total orders in system:', orders.length);
   
   const allMyOrders = orders.filter((o) => {
-    const isMyBranch = o.branchId === user?.branchId;
     const isAssignedToMe = o.deliveryId === user?.id;
     const isRequestedByMe = o.deliveryRequestedBy === user?.id;
+    const isAvailableToClaim = !o.deliveryId && !o.deliveryRequestedBy && 
+      (o.status === "pending" || o.status === "preparing" || o.status === "ready");
     
-    return isMyBranch || isAssignedToMe || isRequestedByMe;
+    return isAssignedToMe || isRequestedByMe || isAvailableToClaim;
   });
   
   console.log('✅ [DELIVERY ORDERS] Filtered orders for delivery:', {
