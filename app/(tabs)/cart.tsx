@@ -610,7 +610,7 @@ const createStyles = (colors: any) =>
     },
     extraPrice: {
       fontSize: 12,
-      color: "#000000",
+      color: colors.textPrimary,
       fontWeight: "700" as const,
       marginBottom: 8,
     },
