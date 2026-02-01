@@ -64,47 +64,40 @@ export default function DeliveryOrdersScreen() {
   });
   
   console.log('📦 [DELIVERY ORDERS] Total orders in system:', orders.length);
-  console.log('📦 [DELIVERY ORDERS] All orders:', orders.map(o => ({
+  
+  const allMyOrders = orders.filter((o) => {
+    const isMyBranch = o.branchId === user?.branchId;
+    const isDeliveryType = o.deliveryType === "delivery";
+    const isAvailable = !o.deliveryId && (o.status === "pending" || o.status === "preparing" || o.status === "ready");
+    const isAssignedToMe = o.deliveryId === user?.id;
+    const isRequestedByMe = o.deliveryRequestedBy === user?.id;
+    
+    return (isMyBranch && isDeliveryType && isAvailable) || isAssignedToMe || isRequestedByMe;
+  });
+  
+  console.log('✅ [DELIVERY ORDERS] Filtered orders for delivery:', {
+    totalOrders: orders.length,
+    myBranchOrders: orders.filter(o => o.branchId === user?.branchId).length,
+    availableOrders: orders.filter(o => o.branchId === user?.branchId && o.deliveryType === "delivery" && !o.deliveryId).length,
+    assignedToMe: orders.filter(o => o.deliveryId === user?.id).length,
+    requestedByMe: orders.filter(o => o.deliveryRequestedBy === user?.id).length,
+    finalFiltered: allMyOrders.length
+  });
+  
+  console.log('📋 [DELIVERY ORDERS] Available orders:', allMyOrders.map(o => ({
     orderNumber: o.orderNumber,
     status: o.status,
     branchId: o.branchId,
     deliveryId: o.deliveryId,
     deliveryType: o.deliveryType
   })));
-  
-  const allMyOrders = orders.filter((o) => {
-    const isMyBranch = o.branchId === user?.branchId;
-    
-    console.log('🔍 [DELIVERY FILTER] Checking order:', {
-      orderNumber: o.orderNumber,
-      orderBranchId: o.branchId,
-      userBranchId: user?.branchId,
-      isMyBranch,
-      status: o.status,
-      deliveryType: o.deliveryType,
-      deliveryId: o.deliveryId,
-    });
-    
-    if (isMyBranch && o.deliveryType === "delivery" && !o.deliveryId && (o.status === "pending" || o.status === "preparing")) {
-      return true;
-    }
-    
-    if (o.deliveryId === user?.id) return true;
-    if (o.deliveryRequestedBy === user?.id && !o.requestApproved) return true;
-    
-    return false;
-  });
-  
-  console.log('✅ [DELIVERY ORDERS] All orders for this delivery:', allMyOrders.length);
 
   const filteredOrders = sortOrdersByPriorityAndTime(
     allMyOrders.filter((order) => {
-      console.log('🎯 [FILTER] Applying filter:', filter, 'to order:', order.orderNumber);
-      
       if (filter === "all") return true;
       
       if (filter === "ready") {
-        return (order.status === "pending" || order.status === "preparing") && !order.deliveryId;
+        return (order.status === "pending" || order.status === "preparing" || order.status === "ready") && !order.deliveryId;
       }
       
       if (filter === "dispatched") {
@@ -508,7 +501,7 @@ export default function DeliveryOrdersScreen() {
                   <Text style={styles.totalValue}>L. {order.total.toFixed(2)}</Text>
                 </View>
 
-                {order.status === "preparing" && !order.deliveryId && !order.deliveryRequestedBy && (
+                {((order.status === "pending" || order.status === "preparing" || order.status === "ready") && !order.deliveryId && !order.deliveryRequestedBy) && (
                   <View style={styles.actionsContainer}>
                     <TouchableOpacity
                       style={[styles.actionButton, { backgroundColor: colors.primary }]}
