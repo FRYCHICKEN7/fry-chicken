@@ -85,7 +85,7 @@ export default function DeliveryOrdersScreen() {
       deliveryId: o.deliveryId,
     });
     
-    if (isMyBranch && o.status === "preparing" && o.deliveryType === "delivery" && !o.deliveryId) {
+    if (isMyBranch && (o.status === "pending" || o.status === "preparing") && o.deliveryType === "delivery" && !o.deliveryId) {
       return true;
     }
     
@@ -102,7 +102,7 @@ export default function DeliveryOrdersScreen() {
       if (filter === "all") return true;
       
       if (filter === "ready") {
-        return order.status === "preparing" && !order.deliveryId;
+        return (order.status === "pending" || order.status === "preparing") && !order.deliveryId;
       }
       
       if (filter === "dispatched") {
