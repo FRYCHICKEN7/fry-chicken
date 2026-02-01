@@ -604,7 +604,7 @@ function DeliveryOrdersView({ user, colors }: { user: any; colors: any }) {
     const isMyBranch = o.branchId === user?.branchId;
     
     if (filter === "ready") {
-      return isMyBranch && o.status === "preparing" && o.deliveryType === "delivery" && !o.deliveryId;
+      return isMyBranch && (o.status === "pending" || o.status === "preparing") && o.deliveryType === "delivery" && !o.deliveryId;
     }
     if (o.deliveryId === user?.id) return true;
     if (o.deliveryRequestedBy === user?.id && !o.requestApproved) return true;
