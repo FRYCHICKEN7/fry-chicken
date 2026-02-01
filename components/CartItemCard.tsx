@@ -164,7 +164,7 @@ const createStyles = (colors: any) => StyleSheet.create({
     marginBottom: 2,
   },
   price: {
-    color: '#000000',
+    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '800',
   },
