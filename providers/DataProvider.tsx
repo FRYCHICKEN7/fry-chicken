@@ -428,17 +428,36 @@ export const [DataProviderInner, useData] = createContextHook(() => {
 
         syncBranchesFromFirebase(false);
       } else if (user?.role === 'delivery' && user.id) {
-        console.log('🔥 [FIREBASE] Delivery: Listening to assigned orders');
+        console.log('🔥 [FIREBASE] Delivery: Listening to assigned orders and available orders');
+        
+        let assignedOrders: Order[] = [];
+        let availableOrders: Order[] = [];
+
+        const combineAndSetOrders = () => {
+          const combined = [...assignedOrders, ...availableOrders];
+          const unique = combined.filter((order, index, self) => 
+            index === self.findIndex(o => o.id === order.id)
+          );
+          console.log('🔥 [FIREBASE] Combined orders for delivery:', {
+            assigned: assignedOrders.length,
+            available: availableOrders.length,
+            total: unique.length
+          });
+          setOrders(unique);
+          AsyncStorage.setItem(ORDERS_KEY, JSON.stringify(unique));
+        };
         
         unsubscribers.push(firebaseService.orders.getByDelivery(user.id, (firebaseOrders) => {
-          console.log('🔥 [FIREBASE] Orders updated from Firebase:', firebaseOrders.length);
-          setOrders(firebaseOrders);
-          AsyncStorage.setItem(ORDERS_KEY, JSON.stringify(firebaseOrders));
+          console.log('🔥 [FIREBASE] Assigned orders updated from Firebase:', firebaseOrders.length);
+          assignedOrders = firebaseOrders;
+          combineAndSetOrders();
         }));
 
         if (user.branchId) {
-          unsubscribers.push(firebaseService.orders.getAvailableForDelivery(user.branchId, (availableOrders) => {
-            console.log('🔥 [FIREBASE] Available orders for delivery:', availableOrders.length);
+          unsubscribers.push(firebaseService.orders.getAvailableForDelivery(user.branchId, (firebaseAvailableOrders) => {
+            console.log('🔥 [FIREBASE] Available orders for delivery updated:', firebaseAvailableOrders.length);
+            availableOrders = firebaseAvailableOrders;
+            combineAndSetOrders();
           }));
         }
 
