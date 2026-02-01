@@ -239,9 +239,11 @@ export const firebaseService = {
       };
 
       branchIds.forEach((branchId) => {
+        const branchIdStr = String(branchId);
+        console.log(`🔍 [FIREBASE] Setting up listener for branchId: ${branchIdStr}`);
         const q = query(
           collection(db, 'orders'),
-          where('branchId', '==', branchId),
+          where('branchId', '==', branchIdStr),
           orderBy('createdAt', 'desc')
         );
 
@@ -249,7 +251,6 @@ export const firebaseService = {
           snapshot.docChanges().forEach((change) => {
             const data = change.doc.data();
             const orderId = change.doc.id;
-            const orderBranchId = data.branchId;
 
             if (change.type === 'removed') {
               ordersMap.delete(orderId);

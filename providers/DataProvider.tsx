@@ -457,24 +457,30 @@ export const [DataProviderInner, useData] = createContextHook(() => {
 
         unsubscribers.push(firebaseService.deliveryUsers.getAll((firebaseDeliveryUsers) => {
           console.log('🔥 [FIREBASE] Delivery users updated in real-time:', firebaseDeliveryUsers.length);
+          console.log('🔥 [FIREBASE] All delivery users:', firebaseDeliveryUsers.map(d => ({
+            email: d.email,
+            branchId: d.branchId,
+            status: d.status,
+            name: d.name
+          })));
           setDeliveryUsers(firebaseDeliveryUsers);
           AsyncStorage.setItem(DELIVERY_USERS_KEY, JSON.stringify(firebaseDeliveryUsers));
           
-          const myDeliveryProfile = firebaseDeliveryUsers.find(d => 
-            (d.email && user?.email && d.email.toLowerCase() === user.email.toLowerCase()) ||
-            (d.id === user?.id)
-          );
+          const userEmail = user?.email?.toLowerCase();
+          console.log('📧 [FIREBASE] Looking for delivery registrations with email:', userEmail);
           
-          const myDNI = myDeliveryProfile?.dni;
-          console.log('🆔 [FIREBASE] My DNI (real-time update):', myDNI);
-          
-          const newAllowedBranchIds = myDNI 
+          const newAllowedBranchIds = userEmail 
             ? firebaseDeliveryUsers
-                .filter(d => d.dni === myDNI && d.status === 'approved')
-                .map(d => d.branchId)
+                .filter(d => {
+                  const emailMatch = d.email?.toLowerCase() === userEmail;
+                  const isApproved = d.status === 'approved';
+                  console.log(`🔍 [FIREBASE] Checking delivery: ${d.email} (${d.branchId}) - emailMatch: ${emailMatch}, approved: ${isApproved}`);
+                  return emailMatch && isApproved;
+                })
+                .map(d => String(d.branchId))
             : [];
           
-          console.log('🏢 [FIREBASE] My allowed branch IDs:', newAllowedBranchIds);
+          console.log('🏢 [FIREBASE] My allowed branch IDs (by email):', newAllowedBranchIds);
           
           const branchIdsChanged = JSON.stringify(myAllowedBranchIds.sort()) !== JSON.stringify(newAllowedBranchIds.sort());
           
@@ -496,7 +502,7 @@ export const [DataProviderInner, useData] = createContextHook(() => {
               });
               unsubscribers.push(availableOrdersUnsubscribe);
             } else {
-              console.log('⚠️ [FIREBASE] No approved branches found for DNI:', myDNI);
+              console.log('⚠️ [FIREBASE] No approved branches found for email:', userEmail);
               availableOrders = [];
               combineAndSetOrders();
             }

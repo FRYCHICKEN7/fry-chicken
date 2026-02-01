@@ -80,7 +80,7 @@ export default function DeliveryOrdersScreen() {
           }
           return matches;
         })
-        .map(d => d.branchId)
+        .map(d => String(d.branchId))
     : [];
   
   console.log('🏢 [DELIVERY ORDERS] My allowed branch IDs (by email):', myAllowedBranchIds);
@@ -88,9 +88,16 @@ export default function DeliveryOrdersScreen() {
   const allMyOrders = orders.filter((o) => {
     const isAssignedToMe = o.deliveryId === user?.id;
     const isRequestedByMe = o.deliveryRequestedBy === user?.id;
+    const orderBranchId = String(o.branchId);
+    const isInMyBranches = myAllowedBranchIds.includes(orderBranchId);
     const isAvailableToClaim = !o.deliveryId && !o.deliveryRequestedBy && 
       (o.status === "pending" || o.status === "preparing" || o.status === "ready") &&
-      myAllowedBranchIds.includes(o.branchId);
+      o.deliveryType === "delivery" &&
+      isInMyBranches;
+    
+    if (o.deliveryType === "delivery" && !isAssignedToMe && !isRequestedByMe) {
+      console.log(`📦 [DELIVERY ORDERS] Checking order ${o.orderNumber}: branchId=${orderBranchId}, inMyBranches=${isInMyBranches}, status=${o.status}, hasDeliveryId=${!!o.deliveryId}`);
+    }
     
     return isAssignedToMe || isRequestedByMe || isAvailableToClaim;
   });
