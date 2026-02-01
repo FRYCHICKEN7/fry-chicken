@@ -65,26 +65,25 @@ export default function DeliveryOrdersScreen() {
   });
   
   console.log('📦 [DELIVERY ORDERS] Total orders in system:', orders.length);
+  console.log('👥 [DELIVERY ORDERS] Total delivery users in system:', deliveryUsers.length);
   
-  const myDeliveryProfile = deliveryUsers.find(d => 
-    (d.email && user?.email && d.email.toLowerCase() === user.email.toLowerCase()) ||
-    (d.id === user?.id)
-  );
-  
-  const myDNI = myDeliveryProfile?.dni;
-  console.log('🆔 [DELIVERY ORDERS] My delivery profile:', {
-    found: !!myDeliveryProfile,
-    dni: myDNI,
-    branchId: myDeliveryProfile?.branchId
-  });
-  
-  const myAllowedBranchIds = myDNI 
+  const myAllowedBranchIds = user?.email
     ? deliveryUsers
-        .filter(d => d.dni === myDNI && d.status === 'approved')
+        .filter(d => {
+          const matches = d.email?.toLowerCase() === user.email?.toLowerCase() && d.status === 'approved';
+          if (matches) {
+            console.log('✅ [DELIVERY ORDERS] Found approved registration:', {
+              branchId: d.branchId,
+              name: d.name,
+              status: d.status
+            });
+          }
+          return matches;
+        })
         .map(d => d.branchId)
     : [];
   
-  console.log('🏢 [DELIVERY ORDERS] My allowed branch IDs:', myAllowedBranchIds);
+  console.log('🏢 [DELIVERY ORDERS] My allowed branch IDs (by email):', myAllowedBranchIds);
   
   const allMyOrders = orders.filter((o) => {
     const isAssignedToMe = o.deliveryId === user?.id;
@@ -98,7 +97,7 @@ export default function DeliveryOrdersScreen() {
   
   console.log('✅ [DELIVERY ORDERS] Filtered orders for delivery:', {
     totalOrders: orders.length,
-    myDNI: myDNI,
+    myEmail: user?.email,
     myAllowedBranches: myAllowedBranchIds,
     assignedToMe: orders.filter(o => o.deliveryId === user?.id).length,
     requestedByMe: orders.filter(o => o.deliveryRequestedBy === user?.id).length,
