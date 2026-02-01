@@ -428,21 +428,21 @@ export const [DataProviderInner, useData] = createContextHook(() => {
 
         syncBranchesFromFirebase(false);
       } else if (user?.role === 'delivery' && user.id) {
-        console.log('🔥 [FIREBASE] Delivery: Listening to assigned orders and available orders');
+        console.log('🔥 [FIREBASE] Delivery: Listening to assigned orders and ALL delivery orders from branches');
         
         let assignedOrders: Order[] = [];
-        let availableOrders: Order[] = [];
+        let branchOrders: Order[] = [];
         let myAllowedBranchIds: string[] = [];
-        let availableOrdersUnsubscribe: (() => void) | null = null;
+        let branchOrdersUnsubscribe: (() => void) | null = null;
 
         const combineAndSetOrders = () => {
-          const combined = [...assignedOrders, ...availableOrders];
+          const combined = [...assignedOrders, ...branchOrders];
           const unique = combined.filter((order, index, self) => 
             index === self.findIndex(o => o.id === order.id)
           );
           console.log('🔥 [FIREBASE] Combined orders for delivery:', {
             assigned: assignedOrders.length,
-            available: availableOrders.length,
+            fromBranches: branchOrders.length,
             total: unique.length
           });
           setOrders(unique);
@@ -488,22 +488,22 @@ export const [DataProviderInner, useData] = createContextHook(() => {
             console.log('🔄 [FIREBASE] Branch IDs changed, updating listeners');
             myAllowedBranchIds = newAllowedBranchIds;
             
-            if (availableOrdersUnsubscribe) {
-              console.log('🧹 [FIREBASE] Cleaning up old available orders listener');
-              availableOrdersUnsubscribe();
-              availableOrdersUnsubscribe = null;
+            if (branchOrdersUnsubscribe) {
+              console.log('🧹 [FIREBASE] Cleaning up old branch orders listener');
+              branchOrdersUnsubscribe();
+              branchOrdersUnsubscribe = null;
             }
             
             if (myAllowedBranchIds.length > 0) {
-              availableOrdersUnsubscribe = firebaseService.orders.getAvailableForDeliveryMultipleBranches(myAllowedBranchIds, (firebaseAvailableOrders) => {
-                console.log('🔥 [FIREBASE] Available orders from multiple branches updated:', firebaseAvailableOrders.length);
-                availableOrders = firebaseAvailableOrders;
+              branchOrdersUnsubscribe = firebaseService.orders.getAllDeliveryOrdersFromBranches(myAllowedBranchIds, (firebaseBranchOrders) => {
+                console.log('🔥 [FIREBASE] ALL delivery orders from branches updated:', firebaseBranchOrders.length);
+                branchOrders = firebaseBranchOrders;
                 combineAndSetOrders();
               });
-              unsubscribers.push(availableOrdersUnsubscribe);
+              unsubscribers.push(branchOrdersUnsubscribe);
             } else {
               console.log('⚠️ [FIREBASE] No approved branches found for email:', userEmail);
-              availableOrders = [];
+              branchOrders = [];
               combineAndSetOrders();
             }
           }

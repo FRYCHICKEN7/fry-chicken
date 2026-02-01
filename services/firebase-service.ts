@@ -287,6 +287,68 @@ export const firebaseService = {
       };
     },
 
+    getAllDeliveryOrdersFromBranches: (branchIds: string[], callback: (orders: Order[]) => void) => {
+      console.log('🔥 Listening to ALL delivery orders from branches:', branchIds);
+      
+      if (branchIds.length === 0) {
+        console.log('⚠️ No branch IDs provided, returning empty orders');
+        callback([]);
+        return () => {};
+      }
+
+      const unsubscribers: (() => void)[] = [];
+      const ordersMap = new Map<string, Order>();
+
+      const updateOrders = () => {
+        const allOrders = Array.from(ordersMap.values());
+        console.log('📦 All delivery orders from branches:', allOrders.length);
+        callback(allOrders);
+      };
+
+      branchIds.forEach((branchId) => {
+        const branchIdStr = String(branchId);
+        console.log(`🔍 [FIREBASE] Setting up ALL orders listener for branchId: ${branchIdStr}`);
+        const q = query(
+          collection(db, 'orders'),
+          where('branchId', '==', branchIdStr),
+          orderBy('createdAt', 'desc')
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            const data = change.doc.data();
+            const orderId = change.doc.id;
+
+            if (change.type === 'removed') {
+              ordersMap.delete(orderId);
+            } else {
+              if (data.deliveryType === 'delivery') {
+                ordersMap.set(orderId, {
+                  ...data,
+                  id: orderId,
+                  createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+                  updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
+                } as Order);
+              } else {
+                ordersMap.delete(orderId);
+              }
+            }
+          });
+          console.log(`📦 [Branch: ${branchId}] All delivery orders in map:`, ordersMap.size);
+          updateOrders();
+        }, (error) => {
+          console.error(`❌ Error listening to all orders for branch ${branchId}:`, error.code);
+        });
+
+        unsubscribers.push(unsubscribe);
+      });
+
+      return () => {
+        console.log('🔥 Cleaning up all delivery orders listeners');
+        unsubscribers.forEach(unsub => unsub());
+      };
+    },
+
     deleteAll: async (): Promise<number> => {
       console.log('🔥 [DELETE ALL ORDERS] Starting deletion of all orders from Firebase...');
       try {

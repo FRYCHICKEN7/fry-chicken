@@ -90,16 +90,13 @@ export default function DeliveryOrdersScreen() {
     const isRequestedByMe = o.deliveryRequestedBy === user?.id;
     const orderBranchId = String(o.branchId);
     const isInMyBranches = myAllowedBranchIds.includes(orderBranchId);
-    const isAvailableToClaim = !o.deliveryId && !o.deliveryRequestedBy && 
-      (o.status === "pending" || o.status === "preparing" || o.status === "ready") &&
-      o.deliveryType === "delivery" &&
-      isInMyBranches;
+    const isDeliveryOrder = o.deliveryType === "delivery";
     
-    if (o.deliveryType === "delivery" && !isAssignedToMe && !isRequestedByMe) {
-      console.log(`📦 [DELIVERY ORDERS] Checking order ${o.orderNumber}: branchId=${orderBranchId}, inMyBranches=${isInMyBranches}, status=${o.status}, hasDeliveryId=${!!o.deliveryId}`);
+    if (isDeliveryOrder && isInMyBranches) {
+      console.log(`📦 [DELIVERY ORDERS] Order ${o.orderNumber}: branchId=${orderBranchId}, status=${o.status}, deliveryId=${o.deliveryId || 'none'}, assignedToMe=${isAssignedToMe}`);
     }
     
-    return isAssignedToMe || isRequestedByMe || isAvailableToClaim;
+    return isDeliveryOrder && (isAssignedToMe || isRequestedByMe || isInMyBranches);
   });
   
   console.log('✅ [DELIVERY ORDERS] Filtered orders for delivery:', {
@@ -108,12 +105,7 @@ export default function DeliveryOrdersScreen() {
     myAllowedBranches: myAllowedBranchIds,
     assignedToMe: orders.filter(o => o.deliveryId === user?.id).length,
     requestedByMe: orders.filter(o => o.deliveryRequestedBy === user?.id).length,
-    availableInMyBranches: orders.filter(o => 
-      !o.deliveryId && !o.deliveryRequestedBy && 
-      (o.status === "pending" || o.status === "preparing" || o.status === "ready") &&
-      myAllowedBranchIds.includes(o.branchId)
-    ).length,
-    finalFiltered: allMyOrders.length
+    allDeliveryOrdersInMyBranches: allMyOrders.length
   });
   
   console.log('📋 [DELIVERY ORDERS] All filtered orders:', allMyOrders.map(o => ({
@@ -122,7 +114,6 @@ export default function DeliveryOrdersScreen() {
     branchId: o.branchId,
     deliveryId: o.deliveryId,
     deliveryType: o.deliveryType,
-    adminApproved: o.adminApproved,
     paymentMethod: o.paymentMethod
   })));
 
@@ -150,6 +141,10 @@ export default function DeliveryOrdersScreen() {
       return false;
     })
   );
+
+  const availableCount = allMyOrders.filter(o => !o.deliveryId && !o.deliveryRequestedBy && 
+    (o.status === "pending" || o.status === "preparing" || o.status === "ready")).length;
+  const dispatchedCount = allMyOrders.filter(o => o.status === "dispatched" && o.deliveryId === user?.id).length;
   
   console.log('✅ [DELIVERY ORDERS] Filtered orders for display:', filteredOrders.length);
 
@@ -427,7 +422,7 @@ export default function DeliveryOrdersScreen() {
                 filter === f && styles.filterButtonTextActive,
               ]}
             >
-              {f === "all" ? "Todos" : f === "ready" ? "Disponibles" : f === "dispatched" ? "En Curso" : f === "delivered" ? "Entregados" : "Rechazados"}
+              {f === "all" ? "Todos" : f === "ready" ? `Disponibles (${availableCount})` : f === "dispatched" ? `En Curso (${dispatchedCount})` : f === "delivered" ? "Entregados" : "Rechazados"}
             </Text>
           </TouchableOpacity>
         ))}
