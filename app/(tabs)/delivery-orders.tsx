@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import {
   ChevronDown,
   ChevronUp,
   User as UserIcon,
+  RefreshCw,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useTheme } from "@/providers/ThemeProvider";
@@ -41,7 +42,7 @@ type FilterStatus = "all" | "ready" | "dispatched" | "delivered" | "rejected";
 
 export default function DeliveryOrdersScreen() {
   const { colors } = useTheme();
-  const { orders, updateOrderStatus, addOrderDelay, addBranchNotification, earnPointsFromOrder, requestOrderClaim, deliveryUsers } = useData();
+  const { orders, updateOrderStatus, addOrderDelay, addBranchNotification, earnPointsFromOrder, requestOrderClaim, deliveryUsers, forceRefreshDeliveryOrders } = useData();
   const { user } = useAuth();
   const [filter, setFilter] = useState<FilterStatus>("ready");
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -55,6 +56,37 @@ export default function DeliveryOrdersScreen() {
   const [delayMinutes, setDelayMinutes] = useState<number>(5);
   const [delayReason, setDelayReason] = useState<string>("");
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshInfo, setRefreshInfo] = useState<{
+    branchIds?: string[];
+    ordersCount?: number;
+    registrations?: number;
+    message?: string;
+  } | null>(null);
+
+  const handleForceRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    setRefreshInfo(null);
+    try {
+      const result = await forceRefreshDeliveryOrders();
+      console.log('🔄 [FORCE REFRESH] Result:', result);
+      setRefreshInfo(result);
+      if (result.success) {
+        Alert.alert(
+          "Pedidos Actualizados",
+          `Se encontraron ${result.ordersCount} pedidos de ${result.branchIds?.length || 0} sucursal(es).\n\nSucursales: ${result.branchIds?.join(', ') || 'Ninguna'}`,
+          [{ text: "OK" }]
+        );
+      } else {
+        Alert.alert("Aviso", result.message || "No se pudieron cargar los pedidos");
+      }
+    } catch (error) {
+      console.error('Error refreshing:', error);
+      Alert.alert("Error", "No se pudieron actualizar los pedidos");
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [forceRefreshDeliveryOrders]);
 
   console.log('🚚 [DELIVERY ORDERS] Current user:', {
     userId: user?.id,
@@ -406,7 +438,30 @@ export default function DeliveryOrdersScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Gestión de Pedidos</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.headerTitle}>Gestión de Pedidos</Text>
+          <TouchableOpacity
+            style={[styles.refreshButton, isRefreshing && styles.refreshButtonDisabled]}
+            onPress={handleForceRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw 
+              size={18} 
+              color={colors.white} 
+              style={isRefreshing ? { opacity: 0.5 } : undefined}
+            />
+            <Text style={styles.refreshButtonText}>
+              {isRefreshing ? "Cargando..." : "Actualizar"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {refreshInfo && (
+          <View style={styles.refreshInfoBanner}>
+            <Text style={styles.refreshInfoText}>
+              📍 {refreshInfo.branchIds?.length || 0} sucursal(es) | 📦 {refreshInfo.ordersCount || 0} pedido(s)
+            </Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.filterContainer}>
@@ -881,10 +936,44 @@ const createStyles = (colors: any) =>
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
+    headerRow: {
+      flexDirection: "row" as const,
+      justifyContent: "space-between" as const,
+      alignItems: "center" as const,
+    },
     headerTitle: {
       fontSize: 20,
       fontWeight: "700" as const,
       color: colors.textPrimary,
+    },
+    refreshButton: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      backgroundColor: colors.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      gap: 6,
+    },
+    refreshButtonDisabled: {
+      opacity: 0.6,
+    },
+    refreshButtonText: {
+      color: colors.white,
+      fontSize: 13,
+      fontWeight: "600" as const,
+    },
+    refreshInfoBanner: {
+      marginTop: 10,
+      backgroundColor: colors.primary + "15",
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+    },
+    refreshInfoText: {
+      color: colors.primary,
+      fontSize: 13,
+      fontWeight: "500" as const,
     },
     filterContainer: {
       flexDirection: "row",

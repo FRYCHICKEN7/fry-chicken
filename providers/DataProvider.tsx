@@ -2367,6 +2367,99 @@ export const [DataProviderInner, useData] = createContextHook(() => {
     }
   };
 
+  const forceRefreshDeliveryOrders = useCallback(async () => {
+    if (!user || user.role !== 'delivery') {
+      console.log('⚠️ [FORCE REFRESH] Not a delivery user');
+      return { success: false, message: 'No es un usuario delivery' };
+    }
+
+    try {
+      console.log('🔄 [FORCE REFRESH] Starting forced refresh of delivery orders...');
+      console.log('📧 [FORCE REFRESH] User email:', user.email);
+      
+      const allDeliveryUsers = await new Promise<DeliveryUser[]>((resolve) => {
+        const unsub = firebaseService.deliveryUsers.getAll((data) => {
+          unsub();
+          resolve(data);
+        });
+      });
+      
+      console.log('👥 [FORCE REFRESH] Total delivery users found:', allDeliveryUsers.length);
+      
+      const userEmail = user.email?.toLowerCase();
+      const myRegistrations = allDeliveryUsers.filter(d => 
+        d.email?.toLowerCase() === userEmail && d.status === 'approved'
+      );
+      
+      console.log('✅ [FORCE REFRESH] My approved registrations:', myRegistrations.map(r => ({
+        branchId: r.branchId,
+        name: r.name,
+        status: r.status
+      })));
+      
+      const myBranchIds = myRegistrations.map(d => String(d.branchId));
+      console.log('🏢 [FORCE REFRESH] My branch IDs:', myBranchIds);
+      
+      if (myBranchIds.length === 0) {
+        console.log('⚠️ [FORCE REFRESH] No approved branches found');
+        setOrders([]);
+        return { 
+          success: false, 
+          message: 'No tienes sucursales aprobadas',
+          branchIds: [],
+          ordersCount: 0
+        };
+      }
+      
+      const branchOrders = await new Promise<Order[]>((resolve) => {
+        const unsub = firebaseService.orders.getAllDeliveryOrdersFromBranches(myBranchIds, (data) => {
+          unsub();
+          resolve(data);
+        });
+      });
+      
+      console.log('📦 [FORCE REFRESH] Orders from branches:', branchOrders.length);
+      
+      const assignedOrders = await new Promise<Order[]>((resolve) => {
+        const unsub = firebaseService.orders.getByDelivery(user.id, (data) => {
+          unsub();
+          resolve(data);
+        });
+      });
+      
+      console.log('📦 [FORCE REFRESH] Assigned orders:', assignedOrders.length);
+      
+      const allOrders = [...assignedOrders, ...branchOrders];
+      const uniqueOrders = allOrders.filter((order, index, self) =>
+        index === self.findIndex(o => o.id === order.id)
+      );
+      
+      console.log('✅ [FORCE REFRESH] Total unique orders:', uniqueOrders.length);
+      console.log('📋 [FORCE REFRESH] Orders details:', uniqueOrders.map(o => ({
+        orderNumber: o.orderNumber,
+        branchId: o.branchId,
+        status: o.status,
+        deliveryType: o.deliveryType
+      })));
+      
+      setOrders(uniqueOrders);
+      setDeliveryUsers(allDeliveryUsers);
+      await AsyncStorage.setItem(ORDERS_KEY, JSON.stringify(uniqueOrders));
+      await AsyncStorage.setItem(DELIVERY_USERS_KEY, JSON.stringify(allDeliveryUsers));
+      
+      return { 
+        success: true, 
+        message: `Se encontraron ${uniqueOrders.length} pedidos`,
+        branchIds: myBranchIds,
+        ordersCount: uniqueOrders.length,
+        registrations: myRegistrations.length
+      };
+    } catch (error) {
+      console.error('❌ [FORCE REFRESH] Error:', error);
+      return { success: false, message: 'Error al cargar pedidos' };
+    }
+  }, [user]);
+
   const clearProductsCache = async () => {
     try {
       console.log('🗑️ [CLEAR CACHE] Removing products and categories from cache...');
@@ -2488,6 +2581,7 @@ export const [DataProviderInner, useData] = createContextHook(() => {
     deleteOrdersByBranches,
     resetAllSalesAndOrders,
     clearProductsCache,
+    forceRefreshDeliveryOrders,
   };
 });
 
