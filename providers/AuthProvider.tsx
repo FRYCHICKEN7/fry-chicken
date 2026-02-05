@@ -287,6 +287,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
           await firebaseService.users.create(userData);
           console.log('✅ Admin user created in Firestore successfully');
           
+          // Verificar que se creó correctamente
           const verifyUser = await firebaseService.users.getById(firebaseUser.uid);
           if (verifyUser) {
             console.log('✅ Verified user exists in Firestore:', verifyUser.name);
@@ -366,90 +367,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     } catch (error) {
       console.error('❌ Error logging in as branch:', error);
       throw error;
-    }
-  };
-
-  // NUEVA FUNCIÓN loginWithEmail agregada
-  const loginWithEmail = async (email: string, password: string): Promise<{ success: boolean; error?: string; user?: User }> => {
-    try {
-      console.log('🔐 [AUTH] Login attempt for:', email);
-      const normalizedEmail = email.toLowerCase().trim();
-
-      // Buscar en AsyncStorage
-      const storedDeliveryUsers = await AsyncStorage.getItem(DELIVERY_USERS_KEY);
-      if (!storedDeliveryUsers) {
-        return { 
-          success: false, 
-          error: 'No hay repartidores registrados en el sistema. Por favor contacta al administrador.' 
-        };
-      }
-
-      const deliveryUsers: DeliveryUser[] = JSON.parse(storedDeliveryUsers);
-      const deliveryUser = deliveryUsers.find(
-        d => d.email?.toLowerCase() === normalizedEmail && 
-             d.password === password &&
-             d.status === 'approved'
-      );
-
-      if (!deliveryUser) {
-        const pendingDelivery = deliveryUsers.find(
-          d => d.email?.toLowerCase() === normalizedEmail && d.password === password
-        );
-        if (pendingDelivery) {
-          return { 
-            success: false, 
-            error: 'Tu cuenta aún no ha sido aprobada. Por favor espera la aprobación de la sucursal.' 
-          };
-        }
-        return { success: false, error: 'Correo o contraseña incorrectos' };
-      }
-
-      console.log('✅ [AUTH] Delivery user found:', deliveryUser.name);
-
-      // Autenticar con Firebase
-      let firebaseUser;
-      try {
-        const userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-        firebaseUser = userCredential.user;
-        console.log('✅ [AUTH] Firebase Auth successful');
-      } catch (authError: any) {
-        if (authError.code === 'auth/user-not-found' || authError.code === 'auth/invalid-credential') {
-          console.log('📝 [AUTH] Creating Firebase Auth account');
-          const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-          firebaseUser = userCredential.user;
-        } else if (authError.code === 'auth/wrong-password') {
-          return { success: false, error: 'Contraseña incorrecta' };
-        } else {
-          return { success: false, error: 'Error de autenticación: ' + authError.message };
-        }
-      }
-
-      // Crear usuario
-      const newUser: User = {
-        id: firebaseUser.uid,
-        role: 'delivery',
-        name: deliveryUser.name,
-        email: normalizedEmail,
-        phone: deliveryUser.phone || '',
-        branchId: deliveryUser.branchId || '',
-        profileImage: DEFAULT_PROFILE_IMAGE,
-      };
-
-      try {
-        await firebaseService.users.create(newUser);
-      } catch (error: any) {
-        console.log('⚠️ User may already exist:', error.message);
-      }
-
-      setUser(newUser);
-      await saveUser(newUser);
-      await updateLastActivity();
-
-      console.log('✅ [AUTH] Login successful:', newUser.name);
-      return { success: true, user: newUser };
-    } catch (error: any) {
-      console.error('❌ [AUTH] Error:', error);
-      return { success: false, error: error.message || 'Error inesperado al iniciar sesión' };
     }
   };
 
@@ -814,6 +731,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     }
   };
 
+
+
   return {
     user,
     isLoading,
@@ -823,7 +742,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     loginAsAdmin,
     loginAsBranch,
     loginAsDelivery,
-    loginWithEmail, // ← AGREGADO AQUÍ
     logout,
     deleteAccount,
     updateProfile,
