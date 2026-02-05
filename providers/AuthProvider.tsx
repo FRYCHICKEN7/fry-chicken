@@ -369,99 +369,54 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     }
   };
 
-  // NUEVA FUNCIÓN loginWithEmail integrada del código 2
+  // NUEVA FUNCIÓN loginWithEmail agregada
   const loginWithEmail = async (email: string, password: string): Promise<{ success: boolean; error?: string; user?: User }> => {
     try {
-      console.log('🔐 [AUTH] ========== LOGIN ATTEMPT ==========');
-      console.log('🔐 [AUTH] Email:', email);
+      console.log('🔐 [AUTH] Login attempt for:', email);
       const normalizedEmail = email.toLowerCase().trim();
-      console.log('🔐 [AUTH] Normalized:', normalizedEmail);
 
-      console.log('📖 [AUTH] Step 1: Checking delivery user profile...');
-      let deliveryUser: any = null;
-
-      // Primero intentar desde AsyncStorage (para compatibilidad con el sistema actual)
+      // Buscar en AsyncStorage
       const storedDeliveryUsers = await AsyncStorage.getItem(DELIVERY_USERS_KEY);
-      if (storedDeliveryUsers) {
-        const deliveryUsers: DeliveryUser[] = JSON.parse(storedDeliveryUsers);
-        deliveryUser = deliveryUsers.find(
-          d => d.email?.toLowerCase() === normalizedEmail && 
-               d.password === password &&
-               d.status === 'approved'
-        );
-        
-        if (deliveryUser) {
-          console.log('✅ [AUTH] Found approved delivery user in AsyncStorage:', deliveryUser.name);
-        } else {
-          const pendingDelivery = deliveryUsers.find(
-            d => d.email?.toLowerCase() === normalizedEmail && d.password === password
-          );
-          if (pendingDelivery) {
-            return { success: false, error: 'Tu cuenta aún no ha sido aprobada. Por favor espera la aprobación de la sucursal.' };
-          }
-        }
-      }
-
-      // Si no se encuentra en AsyncStorage, intentar desde Firebase
-      if (!deliveryUser) {
-        console.log('📖 [AUTH] Checking Firebase deliveryRequests...');
-        try {
-          const requests = await firebaseService.deliveryRequests.getByEmail(normalizedEmail);
-          console.log(`📋 [AUTH] Found ${requests.length} request(s) in deliveryRequests`);
-          
-          if (requests.length > 0) {
-            const approvedRequests = requests.filter(r => r.status === 'approved');
-            console.log(`✅ [AUTH] Found ${approvedRequests.length} approved request(s)`);
-            
-            if (approvedRequests.length > 0) {
-              deliveryUser = approvedRequests[0];
-              console.log('✅ [AUTH] Using approved request:', deliveryUser.name);
-              
-              if (deliveryUser.password && deliveryUser.password !== password) {
-                console.log('❌ [AUTH] Password mismatch!');
-                return { success: false, error: 'Contraseña incorrecta' };
-              }
-            } else {
-              const pendingCount = requests.filter(r => r.status === 'pending').length;
-              if (pendingCount > 0) {
-                return { success: false, error: 'Tu solicitud aún no ha sido aprobada por la sucursal' };
-              }
-            }
-          }
-        } catch (error: any) {
-          console.log('⚠️ [AUTH] Error reading deliveryRequests:', error?.code || error?.message);
-        }
-      }
-
-      if (!deliveryUser) {
-        console.log('❌ [AUTH] No delivery profile found');
+      if (!storedDeliveryUsers) {
         return { 
           success: false, 
-          error: `No se encontró un repartidor aprobado con el correo ${normalizedEmail}. Verifica que tu solicitud haya sido aprobada.` 
+          error: 'No hay repartidores registrados en el sistema. Por favor contacta al administrador.' 
         };
       }
 
-      console.log('✅ [AUTH] Delivery profile validated:', deliveryUser.name);
+      const deliveryUsers: DeliveryUser[] = JSON.parse(storedDeliveryUsers);
+      const deliveryUser = deliveryUsers.find(
+        d => d.email?.toLowerCase() === normalizedEmail && 
+             d.password === password &&
+             d.status === 'approved'
+      );
 
-      console.log('🔥 [AUTH] Step 2: Authenticating with Firebase Auth...');
+      if (!deliveryUser) {
+        const pendingDelivery = deliveryUsers.find(
+          d => d.email?.toLowerCase() === normalizedEmail && d.password === password
+        );
+        if (pendingDelivery) {
+          return { 
+            success: false, 
+            error: 'Tu cuenta aún no ha sido aprobada. Por favor espera la aprobación de la sucursal.' 
+          };
+        }
+        return { success: false, error: 'Correo o contraseña incorrectos' };
+      }
+
+      console.log('✅ [AUTH] Delivery user found:', deliveryUser.name);
+
+      // Autenticar con Firebase
       let firebaseUser;
       try {
         const userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
         firebaseUser = userCredential.user;
-        console.log('✅ [AUTH] Firebase Auth successful for UID:', firebaseUser.uid);
+        console.log('✅ [AUTH] Firebase Auth successful');
       } catch (authError: any) {
-        console.log('⚠️ [AUTH] Firebase Auth failed:', authError.code);
-        
-        if (authError.code === 'auth/user-not-found' || authError.code === 'auth/invalid-credential' || authError.code === 'auth/invalid-email') {
-          console.log('📝 [AUTH] Creating Firebase Auth account for:', normalizedEmail);
-          try {
-            const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-            firebaseUser = userCredential.user;
-            console.log('✅ [AUTH] Firebase Auth account created with UID:', firebaseUser.uid);
-          } catch (createError: any) {
-            console.error('❌ [AUTH] Failed to create auth account:', createError.code, createError.message);
-            return { success: false, error: 'Error al crear cuenta de autenticación: ' + createError.message };
-          }
+        if (authError.code === 'auth/user-not-found' || authError.code === 'auth/invalid-credential') {
+          console.log('📝 [AUTH] Creating Firebase Auth account');
+          const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+          firebaseUser = userCredential.user;
         } else if (authError.code === 'auth/wrong-password') {
           return { success: false, error: 'Contraseña incorrecta' };
         } else {
@@ -469,7 +424,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         }
       }
 
-      console.log('📝 [AUTH] Step 3: Creating/updating user profile...');
+      // Crear usuario
       const newUser: User = {
         id: firebaseUser.uid,
         role: 'delivery',
@@ -481,41 +436,90 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       };
 
       try {
-        const existingUser = await firebaseService.users.getById(firebaseUser.uid);
-        if (!existingUser) {
-          console.log('📝 [AUTH] Creating new user profile in Firestore...');
-          await firebaseService.users.create(newUser);
-          console.log('✅ [AUTH] User profile created successfully');
-        } else {
-          console.log('✅ [AUTH] User profile already exists');
-        }
+        await firebaseService.users.create(newUser);
       } catch (error: any) {
-        console.error('❌ [AUTH] Error with user profile:', error.code, error.message);
+        console.log('⚠️ User may already exist:', error.message);
       }
 
       setUser(newUser);
       await saveUser(newUser);
       await updateLastActivity();
 
-      console.log('✅ [AUTH] ========== LOGIN SUCCESSFUL ==========');
-      console.log('✅ [AUTH] User:', newUser.name);
-      console.log('✅ [AUTH] Role:', newUser.role);
-      console.log('✅ [AUTH] Email:', newUser.email);
+      console.log('✅ [AUTH] Login successful:', newUser.name);
       return { success: true, user: newUser };
     } catch (error: any) {
-      console.error('❌ [AUTH] ========== UNEXPECTED ERROR ==========');
       console.error('❌ [AUTH] Error:', error);
-      console.error('❌ [AUTH] Error message:', error?.message);
       return { success: false, error: error.message || 'Error inesperado al iniciar sesión' };
     }
   };
 
   const loginAsDelivery = async (email: string, password: string) => {
-    const result = await loginWithEmail(email, password);
-    if (!result.success) {
-      throw new Error(result.error || 'Error al iniciar sesión');
+    try {
+      console.log('🔐 Logging in delivery with email:', email);
+      
+      if (!email || !email.includes('@')) {
+        throw new Error('Por favor ingresa un correo electrónico válido');
+      }
+      
+      const storedDeliveryUsers = await AsyncStorage.getItem(DELIVERY_USERS_KEY);
+      if (!storedDeliveryUsers) {
+        throw new Error('No hay repartidores registrados en el sistema');
+      }
+      
+      const deliveryUsers: DeliveryUser[] = JSON.parse(storedDeliveryUsers);
+      const delivery = deliveryUsers.find(
+        d => d.email?.toLowerCase() === email.toLowerCase() && 
+             d.password === password &&
+             d.status === 'approved'
+      );
+      
+      if (!delivery) {
+        const pendingDelivery = deliveryUsers.find(
+          d => d.email?.toLowerCase() === email.toLowerCase() && d.password === password
+        );
+        if (pendingDelivery) {
+          throw new Error('Tu cuenta aún no ha sido aprobada. Por favor espera la aprobación de la sucursal.');
+        }
+        throw new Error('Correo o contraseña incorrectos');
+      }
+      
+      console.log('🚚 Delivery user found:', delivery.name);
+      
+      let firebaseUser;
+      try {
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        firebaseUser = userCredential.user;
+        console.log('✅ Delivery signed in with Firebase');
+      } catch (error: any) {
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+          console.log('📝 Creating delivery Firebase account');
+          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+          firebaseUser = userCredential.user;
+        } else {
+          throw error;
+        }
+      }
+
+      const newUser: User = {
+        id: firebaseUser.uid,
+        role: 'delivery',
+        name: delivery.name,
+        email: delivery.email,
+        phone: delivery.phone,
+        branchId: delivery.branchId,
+        profileImage: DEFAULT_PROFILE_IMAGE,
+      };
+      
+      await firebaseService.users.create(newUser);
+      setUser(newUser);
+      await saveUser(newUser);
+      await updateLastActivity();
+      console.log('✅ Logged in as delivery:', delivery.name);
+      return newUser;
+    } catch (error) {
+      console.error('❌ Error logging in as delivery:', error);
+      throw error;
     }
-    return result.user;
   };
 
   const logout = async () => {
@@ -819,7 +823,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     loginAsAdmin,
     loginAsBranch,
     loginAsDelivery,
-    loginWithEmail, // AGREGADO
+    loginWithEmail, // ← AGREGADO AQUÍ
     logout,
     deleteAccount,
     updateProfile,
