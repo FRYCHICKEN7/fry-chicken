@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { trpcClient } from '@/lib/trpc';
 
 interface WooCommerceProduct {
   id: number;
@@ -51,15 +52,14 @@ export class WooCommerceService {
     return Boolean(this.baseUrl && this.consumerKey && this.consumerSecret);
   }
 
+  private isWeb(): boolean {
+    return (Platform.OS as string) === 'web';
+  }
+
   private async request<T>(endpoint: string, params: Record<string, any> = {}): Promise<T> {
     if (!this.isConfigured()) {
       console.log('[WooCommerce] ⚠️ WooCommerce no está configurado');
       throw new Error('WooCommerce no está configurado. Configure las variables de entorno.');
-    }
-
-    if ((Platform.OS as string) === 'web') {
-      console.log('[WooCommerce] ⚠️ WooCommerce sync no está disponible en navegador web debido a restricciones CORS');
-      throw new Error('WooCommerce sync no está disponible en navegador web. Use la app móvil para sincronizar.');
     }
 
     const url = new URL(endpoint, this.baseUrl);
@@ -111,6 +111,10 @@ export class WooCommerceService {
   }
 
   async getProducts(page = 1, perPage = 100): Promise<WooCommerceProduct[]> {
+    if (this.isWeb()) {
+      console.log('[WooCommerce] 🌐 Using backend proxy for web...');
+      return trpcClient.woocommerce.getProducts.query({ page, perPage }) as Promise<WooCommerceProduct[]>;
+    }
     return this.request<WooCommerceProduct[]>('/wp-json/wc/v3/products', {
       page,
       per_page: perPage,
@@ -119,6 +123,10 @@ export class WooCommerceService {
   }
 
   async getCategories(): Promise<WooCommerceCategory[]> {
+    if (this.isWeb()) {
+      console.log('[WooCommerce] 🌐 Using backend proxy for categories...');
+      return trpcClient.woocommerce.getCategories.query() as Promise<WooCommerceCategory[]>;
+    }
     return this.request<WooCommerceCategory[]>('/wp-json/wc/v3/products/categories', {
       per_page: 100,
       hide_empty: true,
@@ -126,6 +134,11 @@ export class WooCommerceService {
   }
 
   async getAllProducts(): Promise<WooCommerceProduct[]> {
+    if (this.isWeb()) {
+      console.log('[WooCommerce] 🌐 Using backend proxy for all products...');
+      return trpcClient.woocommerce.getAllProducts.query() as Promise<WooCommerceProduct[]>;
+    }
+
     let page = 1;
     let allProducts: WooCommerceProduct[] = [];
     let hasMore = true;

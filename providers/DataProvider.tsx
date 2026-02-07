@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { Branch, DeliveryZone, Complaint, DeliveryUser, Coupon, AppStats, Product, Category, BankAccount, Order, Promotion, BusinessHours, MarketingPopup, ThemeSettings, DeliveryRating, OrderCancellation, OrderDelay, BranchNotification, PointsSettings, UserPoints } from '@/types';
@@ -130,10 +129,6 @@ export const [DataProviderInner, useData] = createContextHook(() => {
       return;
     }
 
-    if ((Platform.OS as string) === 'web') {
-      console.log('[WooCommerce Sync] ℹ️ WooCommerce sync deshabilitado en navegador web (restricciones CORS). Use la app móvil para sincronizar.');
-      return;
-    }
 
     try {
       console.log('[WooCommerce Sync] Starting sync...');
