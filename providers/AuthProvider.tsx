@@ -287,7 +287,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
           await firebaseService.users.create(userData);
           console.log('✅ Admin user created in Firestore successfully');
           
-          // Verificar que se creó correctamente
           const verifyUser = await firebaseService.users.getById(firebaseUser.uid);
           if (verifyUser) {
             console.log('✅ Verified user exists in Firestore:', verifyUser.name);

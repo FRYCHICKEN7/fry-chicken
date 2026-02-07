@@ -794,7 +794,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     backgroundColor: Colors.success + '15',
-    alignItems: 'center',
+    alignItems: 'center' as const,
   },
   registerDeliveryText: {
     color: Colors.success,
