@@ -28,7 +28,7 @@ export default function LoginScreen() {
     loginAsCustomer, 
     loginAsAdmin, 
     loginAsBranch, 
-    loginWithEmail, // Añadido para delivery
+    loginAsDelivery,
     saveBiometricCredentials,
     getBiometricCredentials,
     checkBiometricAvailability,
@@ -196,16 +196,11 @@ export default function LoginScreen() {
           credentials = { code: branchForm.code, password: branchForm.password };
           break;
         case "delivery":
-          // MODIFICADO: Ahora usa loginWithEmail como en el código 2
           if (!deliveryForm.email || !deliveryForm.password) {
             Alert.alert("Error", "Por favor completa todos los campos");
             return;
           }
-          const result = await loginWithEmail(deliveryForm.email.trim(), deliveryForm.password);
-          if (!result.success) {
-            Alert.alert("Error", result.error || "Error al iniciar sesión");
-            return;
-          }
+          await loginAsDelivery(deliveryForm.email, deliveryForm.password);
           credentials = { email: deliveryForm.email, password: deliveryForm.password };
           break;
       }
