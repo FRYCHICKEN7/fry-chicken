@@ -466,9 +466,9 @@ export const [DataProviderInner, useData] = createContextHook(() => {
             ? unique
                 .filter(d => {
                   const emailMatch = d.email?.toLowerCase() === userEmail;
-                  const isApproved = d.status === 'approved';
-                  console.log(`🔍 [FIREBASE] Checking delivery: ${d.email} (${d.branchId}) - emailMatch: ${emailMatch}, approved: ${isApproved}`);
-                  return emailMatch && isApproved;
+                  const notRejected = d.status !== 'rejected';
+                  console.log(`🔍 [FIREBASE] Checking delivery: ${d.email} (${d.branchId}) - emailMatch: ${emailMatch}, status: ${d.status}, notRejected: ${notRejected}`);
+                  return emailMatch && notRejected;
                 })
                 .map(d => String(d.branchId))
             : [];

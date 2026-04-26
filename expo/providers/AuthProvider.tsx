@@ -448,21 +448,25 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         await AsyncStorage.setItem(DELIVERY_USERS_KEY, JSON.stringify(allDeliveries));
       }
 
-      // 4) Find approved delivery
-      const delivery = allDeliveries.find(
-        d => d.email?.toLowerCase() === email.toLowerCase() &&
-             d.password === password &&
-             d.status === 'approved'
+      // 4) Find delivery by email+password (allow pending AND approved)
+      const userDeliveries = allDeliveries.filter(
+        d => d.email?.toLowerCase() === email.toLowerCase() && d.password === password
       );
 
-      if (!delivery) {
-        const pendingDelivery = allDeliveries.find(
-          d => d.email?.toLowerCase() === email.toLowerCase() && d.password === password
-        );
-        if (pendingDelivery) {
-          throw new Error('Tu cuenta aún no ha sido aprobada. Por favor espera la aprobación de la sucursal.');
-        }
+      if (userDeliveries.length === 0) {
         throw new Error('Correo o contraseña incorrectos');
+      }
+
+      const delivery = userDeliveries[0];
+      const allPending = userDeliveries.every(d => d.status === 'pending');
+      const allRejected = userDeliveries.every(d => d.status === 'rejected');
+
+      if (allRejected) {
+        throw new Error('Tu solicitud ha sido rechazada. Contacta a tu sucursal para más información.');
+      }
+
+      if (allPending) {
+        console.log('⚠️ [LOGIN DELIVERY] Delivery account is pending approval, but allowing login:', delivery.name);
       }
 
       console.log('🚚 Delivery user found:', delivery.name, 'branchId:', delivery.branchId);
