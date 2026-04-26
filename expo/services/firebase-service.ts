@@ -1185,6 +1185,45 @@ export const firebaseService = {
       return requests;
     },
 
+    getByEmail: async (email: string): Promise<any[]> => {
+      console.log('🔍 Searching delivery requests by email:', email);
+      const q = query(collection(db, 'deliveryRequests'), where('email', '==', email));
+      const snapshot = await getDocs(q);
+      const requests: any[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        requests.push({
+          ...data,
+          id: doc.id,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        });
+      });
+      console.log('📋 Found', requests.length, 'delivery requests with email:', email);
+      return requests;
+    },
+
+    listenByEmail: (email: string, callback: (requests: any[]) => void) => {
+      console.log('🔥 Listening to delivery requests for email:', email);
+      const q = query(collection(db, 'deliveryRequests'), where('email', '==', email));
+
+      return onSnapshot(q, (snapshot) => {
+        const requests: any[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          requests.push({
+            ...data,
+            id: doc.id,
+            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          });
+        });
+        console.log('📋 Delivery requests updated for email:', requests.length);
+        callback(requests);
+      }, (error) => {
+        console.error('❌ Error listening to delivery requests by email:', error.code);
+        callback([]);
+      });
+    },
+
     approveAllByDni: async (dni: string): Promise<number> => {
       console.log('✅ [APPROVE ALL BY DNI] Starting approval for all requests with DNI:', dni);
       const q = query(collection(db, 'deliveryRequests'), where('dni', '==', dni));

@@ -392,20 +392,71 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         throw new Error('Por favor ingresa un correo electrónico válido');
       }
 
+      let allDeliveries: DeliveryUser[] = [];
+
+      // 1) Intentar leer del cache local
       const storedDeliveryUsers = await AsyncStorage.getItem(DELIVERY_USERS_KEY);
-      if (!storedDeliveryUsers) {
-        throw new Error('No hay repartidores registrados en el sistema');
+      if (storedDeliveryUsers) {
+        try {
+          const parsed = JSON.parse(storedDeliveryUsers) as DeliveryUser[];
+          allDeliveries = [...parsed];
+          console.log('📦 [LOGIN DELIVERY] Loaded', parsed.length, 'delivery users from local cache');
+        } catch {
+          console.log('⚠️ [LOGIN DELIVERY] Failed to parse local cache');
+        }
       }
 
-      const deliveryUsers: DeliveryUser[] = JSON.parse(storedDeliveryUsers);
-      const delivery = deliveryUsers.find(
+      // 2) Buscar en Firebase deliveryRequests directamente (los nuevos registros están ahí)
+      try {
+        console.log('🔍 [LOGIN DELIVERY] Searching deliveryRequests in Firebase for:', email);
+        const requestsFromFirebase = await firebaseService.deliveryRequests.getByEmail(email);
+        console.log('🔍 [LOGIN DELIVERY] Found', requestsFromFirebase.length, 'delivery requests in Firebase');
+
+        const existingIds = new Set(allDeliveries.map(d => d.id));
+        for (const req of requestsFromFirebase) {
+          if (!existingIds.has(req.id)) {
+            allDeliveries.push(req as DeliveryUser);
+            existingIds.add(req.id);
+          }
+        }
+      } catch (fbError) {
+        console.error('❌ [LOGIN DELIVERY] Error fetching from Firebase:', fbError);
+      }
+
+      // 3) Buscar también en deliveryUsers de Firebase directamente
+      try {
+        console.log('🔍 [LOGIN DELIVERY] Searching deliveryUsers in Firebase for:', email);
+        const usersFromFirebase = await firebaseService.deliveryUsers.getAllSnapshot();
+        const matchingUsers = usersFromFirebase.filter(
+          d => d.email?.toLowerCase() === email.toLowerCase()
+        );
+        console.log('🔍 [LOGIN DELIVERY] Found', matchingUsers.length, 'matching delivery users in Firebase');
+
+        const existingIds = new Set(allDeliveries.map(d => d.id));
+        for (const u of matchingUsers) {
+          if (!existingIds.has(u.id)) {
+            allDeliveries.push(u);
+            existingIds.add(u.id);
+          }
+        }
+      } catch (fbError) {
+        console.error('❌ [LOGIN DELIVERY] Error fetching deliveryUsers from Firebase:', fbError);
+      }
+
+      // Save merged list back to AsyncStorage for future offline logins
+      if (allDeliveries.length > 0) {
+        await AsyncStorage.setItem(DELIVERY_USERS_KEY, JSON.stringify(allDeliveries));
+      }
+
+      // 4) Find approved delivery
+      const delivery = allDeliveries.find(
         d => d.email?.toLowerCase() === email.toLowerCase() &&
              d.password === password &&
              d.status === 'approved'
       );
 
       if (!delivery) {
-        const pendingDelivery = deliveryUsers.find(
+        const pendingDelivery = allDeliveries.find(
           d => d.email?.toLowerCase() === email.toLowerCase() && d.password === password
         );
         if (pendingDelivery) {
@@ -414,7 +465,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         throw new Error('Correo o contraseña incorrectos');
       }
 
-      console.log('🚚 Delivery user found:', delivery.name);
+      console.log('🚚 Delivery user found:', delivery.name, 'branchId:', delivery.branchId);
 
       let firebaseUser;
       try {

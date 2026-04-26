@@ -429,6 +429,9 @@ export const [DataProviderInner, useData] = createContextHook(() => {
         let branchOrders: Order[] = [];
         let myAllowedBranchIds: string[] = [];
         let branchOrdersUnsubscribe: (() => void) | null = null;
+        let deliveryUsersFromUsers: DeliveryUser[] = [];
+        let deliveryUsersFromRequests: DeliveryUser[] = [];
+        const userEmail = user?.email?.toLowerCase();
 
         const combineAndSetOrders = () => {
           const combined = [...assignedOrders, ...branchOrders];
@@ -443,29 +446,24 @@ export const [DataProviderInner, useData] = createContextHook(() => {
           setOrders(unique);
           AsyncStorage.setItem(ORDERS_KEY, JSON.stringify(unique));
         };
-        
-        unsubscribers.push(firebaseService.orders.getByDelivery(user.id, (firebaseOrders) => {
-          console.log('🔥 [FIREBASE] Assigned orders updated from Firebase:', firebaseOrders.length);
-          assignedOrders = firebaseOrders;
-          combineAndSetOrders();
-        }));
 
-        unsubscribers.push(firebaseService.deliveryUsers.getAll((firebaseDeliveryUsers) => {
-          console.log('🔥 [FIREBASE] Delivery users updated in real-time:', firebaseDeliveryUsers.length);
-          console.log('🔥 [FIREBASE] All delivery users:', firebaseDeliveryUsers.map(d => ({
-            email: d.email,
-            branchId: d.branchId,
-            status: d.status,
-            name: d.name
-          })));
-          setDeliveryUsers(firebaseDeliveryUsers);
-          AsyncStorage.setItem(DELIVERY_USERS_KEY, JSON.stringify(firebaseDeliveryUsers));
-          
-          const userEmail = user?.email?.toLowerCase();
+        const updateDeliveriesAndBranchOrders = () => {
+          const combined = [...deliveryUsersFromUsers, ...deliveryUsersFromRequests];
+          const unique = combined.filter((item, index, self) => 
+            index === self.findIndex(t => t.id === item.id)
+          );
+          console.log('🔥 [FIREBASE] Combined delivery users:', {
+            fromUsers: deliveryUsersFromUsers.length,
+            fromRequests: deliveryUsersFromRequests.length,
+            total: unique.length
+          });
+          setDeliveryUsers(unique);
+          AsyncStorage.setItem(DELIVERY_USERS_KEY, JSON.stringify(unique));
+
           console.log('📧 [FIREBASE] Looking for delivery registrations with email:', userEmail);
-          
-          const newAllowedBranchIds = userEmail 
-            ? firebaseDeliveryUsers
+
+          const newAllowedBranchIds = userEmail
+            ? unique
                 .filter(d => {
                   const emailMatch = d.email?.toLowerCase() === userEmail;
                   const isApproved = d.status === 'approved';
@@ -474,21 +472,21 @@ export const [DataProviderInner, useData] = createContextHook(() => {
                 })
                 .map(d => String(d.branchId))
             : [];
-          
+
           console.log('🏢 [FIREBASE] My allowed branch IDs (by email):', newAllowedBranchIds);
-          
+
           const branchIdsChanged = JSON.stringify(myAllowedBranchIds.sort()) !== JSON.stringify(newAllowedBranchIds.sort());
-          
+
           if (branchIdsChanged) {
             console.log('🔄 [FIREBASE] Branch IDs changed, updating listeners');
             myAllowedBranchIds = newAllowedBranchIds;
-            
+
             if (branchOrdersUnsubscribe) {
               console.log('🧹 [FIREBASE] Cleaning up old branch orders listener');
               branchOrdersUnsubscribe();
               branchOrdersUnsubscribe = null;
             }
-            
+
             if (myAllowedBranchIds.length > 0) {
               branchOrdersUnsubscribe = firebaseService.orders.getAllDeliveryOrdersFromBranches(myAllowedBranchIds, (firebaseBranchOrders) => {
                 console.log('🔥 [FIREBASE] ALL delivery orders from branches updated:', firebaseBranchOrders.length);
@@ -502,7 +500,29 @@ export const [DataProviderInner, useData] = createContextHook(() => {
               combineAndSetOrders();
             }
           }
+        };
+        
+        unsubscribers.push(firebaseService.orders.getByDelivery(user.id, (firebaseOrders) => {
+          console.log('🔥 [FIREBASE] Assigned orders updated from Firebase:', firebaseOrders.length);
+          assignedOrders = firebaseOrders;
+          combineAndSetOrders();
         }));
+
+        unsubscribers.push(firebaseService.deliveryUsers.getAll((firebaseDeliveryUsers) => {
+          console.log('🔥 [FIREBASE] Delivery users (deliveryUsers collection) updated:', firebaseDeliveryUsers.length);
+          deliveryUsersFromUsers = firebaseDeliveryUsers;
+          updateDeliveriesAndBranchOrders();
+        }));
+
+        if (userEmail) {
+          unsubscribers.push(firebaseService.deliveryRequests.listenByEmail(userEmail, (firebaseRequests) => {
+            console.log('🔥 [FIREBASE] Delivery requests (deliveryRequests collection) updated for email:', firebaseRequests.length);
+            deliveryUsersFromRequests = firebaseRequests as DeliveryUser[];
+            updateDeliveriesAndBranchOrders();
+          }));
+        } else {
+          console.log('⚠️ [FIREBASE] No user email available, skipping deliveryRequests listener');
+        }
 
         syncBranchesFromFirebase(false);
       } else if (user?.role === 'customer') {
@@ -2371,64 +2391,85 @@ export const [DataProviderInner, useData] = createContextHook(() => {
     try {
       console.log('🔄 [FORCE REFRESH] Starting forced refresh of delivery orders...');
       console.log('📧 [FORCE REFRESH] User email:', user.email);
-      
-      const allDeliveryUsers = await new Promise<DeliveryUser[]>((resolve) => {
+
+      // 1) Fetch from deliveryUsers collection
+      const deliveryUsersFromUsers = await new Promise<DeliveryUser[]>((resolve) => {
         const unsub = firebaseService.deliveryUsers.getAll((data) => {
           unsub();
           resolve(data);
         });
       });
-      
-      console.log('👥 [FORCE REFRESH] Total delivery users found:', allDeliveryUsers.length);
-      
+      console.log('👥 [FORCE REFRESH] deliveryUsers collection:', deliveryUsersFromUsers.length);
+
+      // 2) Fetch from deliveryRequests collection by email
+      let deliveryUsersFromRequests: DeliveryUser[] = [];
       const userEmail = user.email?.toLowerCase();
-      const myRegistrations = allDeliveryUsers.filter(d => 
+      if (userEmail) {
+        try {
+          const requestsFromFirebase = await firebaseService.deliveryRequests.getByEmail(userEmail);
+          deliveryUsersFromRequests = requestsFromFirebase as DeliveryUser[];
+          console.log('👥 [FORCE REFRESH] deliveryRequests for email:', deliveryUsersFromRequests.length);
+        } catch (fbError) {
+          console.error('❌ [FORCE REFRESH] Error fetching deliveryRequests:', fbError);
+        }
+      }
+
+      // 3) Merge both sources
+      const allDeliveries = [...deliveryUsersFromUsers, ...deliveryUsersFromRequests];
+      const uniqueDeliveries = allDeliveries.filter((item, index, self) =>
+        index === self.findIndex(t => t.id === item.id)
+      );
+      console.log('👥 [FORCE REFRESH] Total merged delivery users:', uniqueDeliveries.length);
+
+      const myRegistrations = uniqueDeliveries.filter(d =>
         d.email?.toLowerCase() === userEmail && d.status === 'approved'
       );
-      
+
       console.log('✅ [FORCE REFRESH] My approved registrations:', myRegistrations.map(r => ({
         branchId: r.branchId,
         name: r.name,
         status: r.status
       })));
-      
+
       const myBranchIds = myRegistrations.map(d => String(d.branchId));
       console.log('🏢 [FORCE REFRESH] My branch IDs:', myBranchIds);
-      
+
       if (myBranchIds.length === 0) {
         console.log('⚠️ [FORCE REFRESH] No approved branches found');
         setOrders([]);
-        return { 
-          success: false, 
+        setDeliveryUsers(uniqueDeliveries);
+        await AsyncStorage.setItem(DELIVERY_USERS_KEY, JSON.stringify(uniqueDeliveries));
+        return {
+          success: false,
           message: 'No tienes sucursales aprobadas',
           branchIds: [],
           ordersCount: 0
         };
       }
-      
+
       const branchOrders = await new Promise<Order[]>((resolve) => {
         const unsub = firebaseService.orders.getAllDeliveryOrdersFromBranches(myBranchIds, (data) => {
           unsub();
           resolve(data);
         });
       });
-      
+
       console.log('📦 [FORCE REFRESH] Orders from branches:', branchOrders.length);
-      
+
       const assignedOrders = await new Promise<Order[]>((resolve) => {
         const unsub = firebaseService.orders.getByDelivery(user.id, (data) => {
           unsub();
           resolve(data);
         });
       });
-      
+
       console.log('📦 [FORCE REFRESH] Assigned orders:', assignedOrders.length);
-      
+
       const allOrders = [...assignedOrders, ...branchOrders];
       const uniqueOrders = allOrders.filter((order, index, self) =>
         index === self.findIndex(o => o.id === order.id)
       );
-      
+
       console.log('✅ [FORCE REFRESH] Total unique orders:', uniqueOrders.length);
       console.log('📋 [FORCE REFRESH] Orders details:', uniqueOrders.map(o => ({
         orderNumber: o.orderNumber,
@@ -2436,14 +2477,14 @@ export const [DataProviderInner, useData] = createContextHook(() => {
         status: o.status,
         deliveryType: o.deliveryType
       })));
-      
+
       setOrders(uniqueOrders);
-      setDeliveryUsers(allDeliveryUsers);
+      setDeliveryUsers(uniqueDeliveries);
       await AsyncStorage.setItem(ORDERS_KEY, JSON.stringify(uniqueOrders));
-      await AsyncStorage.setItem(DELIVERY_USERS_KEY, JSON.stringify(allDeliveryUsers));
-      
-      return { 
-        success: true, 
+      await AsyncStorage.setItem(DELIVERY_USERS_KEY, JSON.stringify(uniqueDeliveries));
+
+      return {
+        success: true,
         message: `Se encontraron ${uniqueOrders.length} pedidos`,
         branchIds: myBranchIds,
         ordersCount: uniqueOrders.length,
