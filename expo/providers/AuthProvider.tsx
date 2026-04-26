@@ -317,35 +317,47 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   const loginAsBranch = async (code: string, password: string) => {
     try {
       console.log('🔐 Logging in branch with code:', code);
-      
+
       const storedBranches = await AsyncStorage.getItem(BRANCHES_KEY);
       if (!storedBranches) {
         throw new Error('No hay sucursales registradas en el sistema');
       }
-      
+
       const branches: Branch[] = JSON.parse(storedBranches);
       const branch = branches.find(b => b.code === code && b.password === password);
-      
+
       if (!branch) {
         throw new Error('Código o contraseña incorrectos');
       }
-      
+
       console.log('🏢 Branch found:', branch.name);
-      
+
       const email = `branch-${branch.code}@frychicken.local`;
-      
+
       let firebaseUser;
       try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         firebaseUser = userCredential.user;
         console.log('✅ Branch signed in');
-      } catch (error: any) {
-        if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-          console.log('📝 Creating branch account');
+      } catch (signInError: any) {
+        const signInCode = signInError.code;
+        console.log('⚠️ Branch signIn failed:', signInCode);
+
+        const canCreate = signInCode === 'auth/user-not-found' || signInCode === 'auth/invalid-credential';
+        if (!canCreate) {
+          throw signInError;
+        }
+
+        try {
+          console.log('📝 Creating branch Firebase account');
           const userCredential = await createUserWithEmailAndPassword(auth, email, password);
           firebaseUser = userCredential.user;
-        } else {
-          throw error;
+        } catch (createError: any) {
+          if (createError.code === 'auth/email-already-in-use') {
+            console.log('⚠️ Branch email already in Firebase Auth - password mismatch');
+            throw new Error('Código o contraseña incorrectos');
+          }
+          throw createError;
         }
       }
 
@@ -356,15 +368,18 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         branchId: branch.id,
         profileImage: DEFAULT_PROFILE_IMAGE,
       };
-      
+
       await firebaseService.users.create(newUser);
       setUser(newUser);
       await saveUser(newUser);
       await updateLastActivity();
       console.log('✅ Logged in as branch:', branch.name, 'with branchId:', branch.id);
       return newUser;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error logging in as branch:', error);
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+        throw new Error('Código o contraseña incorrectos');
+      }
       throw error;
     }
   };
@@ -372,23 +387,23 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   const loginAsDelivery = async (email: string, password: string) => {
     try {
       console.log('🔐 Logging in delivery with email:', email);
-      
+
       if (!email || !email.includes('@')) {
         throw new Error('Por favor ingresa un correo electrónico válido');
       }
-      
+
       const storedDeliveryUsers = await AsyncStorage.getItem(DELIVERY_USERS_KEY);
       if (!storedDeliveryUsers) {
         throw new Error('No hay repartidores registrados en el sistema');
       }
-      
+
       const deliveryUsers: DeliveryUser[] = JSON.parse(storedDeliveryUsers);
       const delivery = deliveryUsers.find(
-        d => d.email?.toLowerCase() === email.toLowerCase() && 
+        d => d.email?.toLowerCase() === email.toLowerCase() &&
              d.password === password &&
              d.status === 'approved'
       );
-      
+
       if (!delivery) {
         const pendingDelivery = deliveryUsers.find(
           d => d.email?.toLowerCase() === email.toLowerCase() && d.password === password
@@ -398,21 +413,33 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         }
         throw new Error('Correo o contraseña incorrectos');
       }
-      
+
       console.log('🚚 Delivery user found:', delivery.name);
-      
+
       let firebaseUser;
       try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         firebaseUser = userCredential.user;
         console.log('✅ Delivery signed in with Firebase');
-      } catch (error: any) {
-        if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+      } catch (signInError: any) {
+        const signInCode = signInError.code;
+        console.log('⚠️ Delivery signIn failed:', signInCode);
+
+        const canCreate = signInCode === 'auth/user-not-found' || signInCode === 'auth/invalid-credential';
+        if (!canCreate) {
+          throw signInError;
+        }
+
+        try {
           console.log('📝 Creating delivery Firebase account');
           const userCredential = await createUserWithEmailAndPassword(auth, email, password);
           firebaseUser = userCredential.user;
-        } else {
-          throw error;
+        } catch (createError: any) {
+          if (createError.code === 'auth/email-already-in-use') {
+            console.log('⚠️ Delivery email already in Firebase Auth - password mismatch');
+            throw new Error('Correo o contraseña incorrectos');
+          }
+          throw createError;
         }
       }
 
@@ -425,15 +452,18 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         branchId: delivery.branchId,
         profileImage: DEFAULT_PROFILE_IMAGE,
       };
-      
+
       await firebaseService.users.create(newUser);
       setUser(newUser);
       await saveUser(newUser);
       await updateLastActivity();
       console.log('✅ Logged in as delivery:', delivery.name);
       return newUser;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error logging in as delivery:', error);
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+        throw new Error('Correo o contraseña incorrectos');
+      }
       throw error;
     }
   };

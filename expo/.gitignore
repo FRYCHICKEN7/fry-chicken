@@ -59,3 +59,5 @@ logs/
 .cache/
 *.cache
 core
+node_modules
+.expo
