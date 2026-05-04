@@ -385,10 +385,11 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   };
 
   const loginAsDelivery = async (email: string, password: string) => {
+    const normalizedEmail = email.toLowerCase().trim();
     try {
-      console.log('🔐 Logging in delivery with email:', email);
+      console.log('🔐 Logging in delivery with email:', normalizedEmail);
 
-      if (!email || !email.includes('@')) {
+      if (!normalizedEmail || !normalizedEmail.includes('@')) {
         throw new Error('Por favor ingresa un correo electrónico válido');
       }
 
@@ -399,8 +400,10 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       if (storedDeliveryUsers) {
         try {
           const parsed = JSON.parse(storedDeliveryUsers) as DeliveryUser[];
-          allDeliveries = [...parsed];
-          console.log('📦 [LOGIN DELIVERY] Loaded', parsed.length, 'delivery users from local cache');
+          allDeliveries = parsed.filter(d =>
+            (d.email || '').toLowerCase().trim() === normalizedEmail
+          );
+          console.log('📦 [LOGIN DELIVERY] Loaded', allDeliveries.length, 'matching delivery users from local cache (filtered)');
         } catch {
           console.log('⚠️ [LOGIN DELIVERY] Failed to parse local cache');
         }
@@ -408,8 +411,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
       // 2) Buscar en Firebase deliveryRequests directamente (los nuevos registros están ahí)
       try {
-        console.log('🔍 [LOGIN DELIVERY] Searching deliveryRequests in Firebase for:', email);
-        const requestsFromFirebase = await firebaseService.deliveryRequests.getByEmail(email);
+        console.log('🔍 [LOGIN DELIVERY] Searching deliveryRequests in Firebase for:', normalizedEmail);
+        const requestsFromFirebase = await firebaseService.deliveryRequests.getByEmail(normalizedEmail);
         console.log('🔍 [LOGIN DELIVERY] Found', requestsFromFirebase.length, 'delivery requests in Firebase');
 
         const existingIds = new Set(allDeliveries.map(d => d.id));
@@ -420,15 +423,15 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
           }
         }
       } catch (fbError) {
-        console.error('❌ [LOGIN DELIVERY] Error fetching from Firebase:', fbError);
+        console.error('❌ [LOGIN DELIVERY] Error fetching from Firebase deliveryRequests:', fbError);
       }
 
       // 3) Buscar también en deliveryUsers de Firebase directamente
       try {
-        console.log('🔍 [LOGIN DELIVERY] Searching deliveryUsers in Firebase for:', email);
+        console.log('🔍 [LOGIN DELIVERY] Searching deliveryUsers in Firebase for:', normalizedEmail);
         const usersFromFirebase = await firebaseService.deliveryUsers.getAllSnapshot();
         const matchingUsers = usersFromFirebase.filter(
-          d => d.email?.toLowerCase() === email.toLowerCase()
+          d => (d.email || '').toLowerCase().trim() === normalizedEmail
         );
         console.log('🔍 [LOGIN DELIVERY] Found', matchingUsers.length, 'matching delivery users in Firebase');
 
@@ -450,10 +453,12 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
       // 4) Find delivery by email+password (allow pending AND approved)
       const userDeliveries = allDeliveries.filter(
-        d => d.email?.toLowerCase() === email.toLowerCase() && d.password === password
+        d => (d.email || '').toLowerCase().trim() === normalizedEmail && d.password === password
       );
 
+      console.log('🔍 [LOGIN DELIVERY] After filtering by email+password:', userDeliveries.length, 'matches');
       if (userDeliveries.length === 0) {
+        console.log('❌ [LOGIN DELIVERY] No delivery found with provided email+password');
         throw new Error('Correo o contraseña incorrectos');
       }
 
@@ -469,30 +474,40 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         console.log('⚠️ [LOGIN DELIVERY] Delivery account is pending approval, but allowing login:', delivery.name);
       }
 
-      console.log('🚚 Delivery user found:', delivery.name, 'branchId:', delivery.branchId);
+      console.log('🚚 Delivery user found:', delivery.name, 'branchId:', delivery.branchId, 'status:', delivery.status);
 
+      // 5) Firebase Auth sign-in or account creation
       let firebaseUser;
       try {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        console.log('🔥 [LOGIN DELIVERY] Attempting Firebase Auth signIn...');
+        const userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
         firebaseUser = userCredential.user;
-        console.log('✅ Delivery signed in with Firebase');
+        console.log('✅ Delivery signed in with Firebase Auth, uid:', firebaseUser.uid);
       } catch (signInError: any) {
         const signInCode = signInError.code;
-        console.log('⚠️ Delivery signIn failed:', signInCode);
+        console.log('⚠️ [LOGIN DELIVERY] Firebase signIn failed, code:', signInCode, 'message:', signInError.message);
 
+        // Modern Firebase uses 'auth/invalid-credential' for both user-not-found AND wrong-password.
+        // We attempt to create the account. If it already exists, the password is wrong.
         const canCreate = signInCode === 'auth/user-not-found' || signInCode === 'auth/invalid-credential';
         if (!canCreate) {
+          console.log('❌ [LOGIN DELIVERY] SignIn error not recoverable, throwing:', signInCode);
           throw signInError;
         }
 
+        console.log('📝 [LOGIN DELIVERY] Attempting to create Firebase Auth account...');
         try {
-          console.log('📝 Creating delivery Firebase account');
-          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+          const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
           firebaseUser = userCredential.user;
+          console.log('✅ [LOGIN DELIVERY] Firebase Auth account created, uid:', firebaseUser.uid);
         } catch (createError: any) {
+          console.log('❌ [LOGIN DELIVERY] Firebase Auth create failed, code:', createError.code, 'message:', createError.message);
           if (createError.code === 'auth/email-already-in-use') {
-            console.log('⚠️ Delivery email already in Firebase Auth - password mismatch');
-            throw new Error('Correo o contraseña incorrectos');
+            console.log('⚠️ [LOGIN DELIVERY] Email already exists in Firebase Auth with different password');
+            throw new Error('Este correo ya está registrado con otra contraseña. Si olvidaste tu contraseña, contacta al administrador.');
+          }
+          if (createError.code === 'auth/weak-password') {
+            throw new Error('La contraseña es demasiado débil. Debe tener al menos 6 caracteres.');
           }
           throw createError;
         }

@@ -1186,35 +1186,44 @@ export const firebaseService = {
     },
 
     getByEmail: async (email: string): Promise<any[]> => {
-      console.log('🔍 Searching delivery requests by email:', email);
-      const q = query(collection(db, 'deliveryRequests'), where('email', '==', email));
-      const snapshot = await getDocs(q);
+      const normalizedEmail = email.toLowerCase().trim();
+      console.log('🔍 Searching delivery requests by email:', normalizedEmail);
+      // Firestore queries are case-sensitive, so we fetch all and filter in memory
+      // to ensure case-insensitive matching for existing data
+      const snapshot = await getDocs(collection(db, 'deliveryRequests'));
       const requests: any[] = [];
       snapshot.forEach((doc) => {
         const data = doc.data();
-        requests.push({
-          ...data,
-          id: doc.id,
-          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-        });
-      });
-      console.log('📋 Found', requests.length, 'delivery requests with email:', email);
-      return requests;
-    },
-
-    listenByEmail: (email: string, callback: (requests: any[]) => void) => {
-      console.log('🔥 Listening to delivery requests for email:', email);
-      const q = query(collection(db, 'deliveryRequests'), where('email', '==', email));
-
-      return onSnapshot(q, (snapshot) => {
-        const requests: any[] = [];
-        snapshot.forEach((doc) => {
-          const data = doc.data();
+        const docEmail = (data.email || '').toLowerCase().trim();
+        if (docEmail === normalizedEmail) {
           requests.push({
             ...data,
             id: doc.id,
             createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           });
+        }
+      });
+      console.log('📋 Found', requests.length, 'delivery requests with email:', normalizedEmail);
+      return requests;
+    },
+
+    listenByEmail: (email: string, callback: (requests: any[]) => void) => {
+      const normalizedEmail = email.toLowerCase().trim();
+      console.log('🔥 Listening to delivery requests for email:', normalizedEmail);
+      // Firestore queries are case-sensitive, so we listen to the entire collection
+      // and filter in memory to ensure case-insensitive matching.
+      return onSnapshot(collection(db, 'deliveryRequests'), (snapshot) => {
+        const requests: any[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const docEmail = (data.email || '').toLowerCase().trim();
+          if (docEmail === normalizedEmail) {
+            requests.push({
+              ...data,
+              id: doc.id,
+              createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+            });
+          }
         });
         console.log('📋 Delivery requests updated for email:', requests.length);
         callback(requests);

@@ -431,7 +431,7 @@ export const [DataProviderInner, useData] = createContextHook(() => {
         let branchOrdersUnsubscribe: (() => void) | null = null;
         let deliveryUsersFromUsers: DeliveryUser[] = [];
         let deliveryUsersFromRequests: DeliveryUser[] = [];
-        const userEmail = user?.email?.toLowerCase();
+        const userEmail = user?.email?.toLowerCase().trim();
 
         const combineAndSetOrders = () => {
           const combined = [...assignedOrders, ...branchOrders];
@@ -1071,6 +1071,7 @@ export const [DataProviderInner, useData] = createContextHook(() => {
       deliveryCode,
       status: 'pending',
       createdAt: new Date().toISOString(),
+      email: user.email ? user.email.toLowerCase().trim() : user.email,
     };
     
     // Guardar en Firebase como solicitud (deliveryRequests - permite escritura pública)
@@ -2403,7 +2404,7 @@ export const [DataProviderInner, useData] = createContextHook(() => {
 
       // 2) Fetch from deliveryRequests collection by email
       let deliveryUsersFromRequests: DeliveryUser[] = [];
-      const userEmail = user.email?.toLowerCase();
+      const userEmail = user.email?.toLowerCase().trim();
       if (userEmail) {
         try {
           const requestsFromFirebase = await firebaseService.deliveryRequests.getByEmail(userEmail);

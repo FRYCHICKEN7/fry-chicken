@@ -112,7 +112,7 @@ export default function DeliveryRegisterScreen() {
         const deliveryData: any = {
           name: formData.name,
           phone: formData.phone,
-          email: formData.email || undefined,
+          email: formData.email ? formData.email.toLowerCase().trim() : undefined,
           dni: formData.dni,
           dniPhoto: 'pending',
           address: formData.address,
